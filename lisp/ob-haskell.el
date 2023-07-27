@@ -130,6 +130,9 @@ a parameter, such as \"ghc -v\"."
          (cmdline (cdr (assq :cmdline params)))
          (cmdline (if cmdline (concat " " cmdline) ""))
          (nix (cdr (assq :nix params)))
+         (stdin (let ((stdin (cdr (assq :stdin params))))
+                  (when stdin (org-babel-sh-var-to-string
+                               (org-babel-ref-resolve stdin)))))
          (flags (cdr (assq :flags params)))
          (flags (mapconcat #'identity
 		           (if (listp flags)
@@ -152,7 +155,7 @@ a parameter, such as \"ghc -v\"."
 	     (org-babel-process-file-name tmp-src-file)
 	     libs)
      "")
-    (let ((results (org-babel-eval (concat tmp-bin-file cmdline) "")))
+    (let ((results (org-babel-eval (concat tmp-bin-file cmdline) stdin)))
       (when results
         (setq results (org-trim (org-remove-indentation results)))
         (org-babel-reassemble-table
