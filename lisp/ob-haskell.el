@@ -65,6 +65,8 @@
 
 (defvar haskell-prompt-regexp)
 
+(defvar org-babel-haskell-nix-cache nil)
+
 (defcustom org-babel-haskell-compiler "ghc"
   "Command used to compile a Haskell source code file into an executable.
 May be either a command in the path, like \"ghc\" or an absolute
@@ -77,6 +79,48 @@ a parameter, such as \"ghc -v\"."
 (defconst org-babel-header-args:haskell '((compile . :any))
   "Haskell-specific header arguments.")
 
+(defun org-babel-haskell-nix-path (packages)
+  (let*
+      ((get-ghc-path
+	(lambda (PATH)
+	  (let ((ghcdir
+		 (substring
+		  PATH
+		  (string-match
+		   "/nix/store/[^:]*ghc[^:]*-with-packages[^:]*\/bin"
+		   PATH)
+		  (match-end 0))))
+	    (concat ghcdir "/ghc"))))
+       (package-list (if (listp packages) packages (list packages)))
+       (package-string (mapconcat
+                        #'identity
+                        (sort (mapcar #'symbol-name package-list) #'string<)
+                        " "))
+       (ghc-with-packages (format
+			   "ghc.withPackages(p: with p; [%s])"
+			   package-string))
+       (shcmd (concat
+	       "nix-shell -p "
+	       (format "%S" ghc-with-packages)
+	       " --run "
+	       (format "%S" "printenv PATH"))))
+
+    (cond
+     ((cdr (assoc package-string org-babel-haskell-nix-cache)))
+     ((let
+          ((path (funcall
+                  get-ghc-path
+                  (shell-command-to-string shcmd))))
+        (progn
+          (push `(,package-string . ,path) org-babel-haskell-nix-cache)
+          path)))
+     )))
+
+(defun org-babel-haskell-compiler-get (nix)
+  (cond
+   (nix (org-babel-haskell-nix-path nix))
+   (org-babel-haskell-compiler)))
+
 (defun org-babel-haskell-execute (body params)
   "This function should only be called by `org-babel-execute:haskell'."
   (let* ((tmp-src-file (org-babel-temp-file "Haskell-src-" ".hs"))
@@ -85,6 +129,7 @@ a parameter, such as \"ghc -v\"."
            (org-babel-temp-file "Haskell-bin-" org-babel-exeext)))
          (cmdline (cdr (assq :cmdline params)))
          (cmdline (if cmdline (concat " " cmdline) ""))
+         (nix (cdr (assq :nix params)))
          (flags (cdr (assq :flags params)))
          (flags (mapconcat #'identity
 		           (if (listp flags)
@@ -101,7 +146,7 @@ a parameter, such as \"ghc -v\"."
     (with-temp-file tmp-src-file (insert body))
     (org-babel-eval
      (format "%s -o %s %s %s %s"
-             org-babel-haskell-compiler
+             (org-babel-haskell-compiler-get nix)
 	     tmp-bin-file
 	     flags
 	     (org-babel-process-file-name tmp-src-file)
