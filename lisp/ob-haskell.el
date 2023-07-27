@@ -123,7 +123,8 @@ a parameter, such as \"ghc -v\"."
 
 (defun org-babel-haskell-execute (body params)
   "This function should only be called by `org-babel-execute:haskell'."
-  (let* ((tmp-src-file (org-babel-temp-file "Haskell-src-" ".hs"))
+  (let* ((dir (cdr (assq :dir params)))
+         (tmp-src-file (org-babel-temp-file "Haskell-src-" ".hs"))
          (tmp-bin-file
           (org-babel-process-file-name
            (org-babel-temp-file "Haskell-bin-" org-babel-exeext)))
@@ -134,6 +135,8 @@ a parameter, such as \"ghc -v\"."
                   (when stdin (org-babel-sh-var-to-string
                                (org-babel-ref-resolve stdin)))))
          (flags (cdr (assq :flags params)))
+         (iflag (cond (dir (list (format "-i=%s" (string-trim dir))))))
+         (flags (append iflag flags))
          (flags (mapconcat #'identity
 		           (if (listp flags)
                                flags
